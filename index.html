@@ -3,21 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Camera Detection</title>
-    <script defer src="script.js"></script>
+    <title>AI Motion Tracking</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h2>AI Camera Detection System</h2>
+
+    <h1>AI Motion Tracking System</h1>
     
-    <label for="cameraSelect">Piliin ang Camera:</label>
+    <label for="cameraSelect">Select Camera:</label>
     <select id="cameraSelect">
-        <option value="user">Front Camera</option>
         <option value="environment">Back Camera</option>
+        <option value="user">Front Camera</option>
     </select>
-    
-    <video id="cameraFeed" autoplay playsinline></video>
-    <canvas id="canvas"></canvas>
-    
-    <p id="alertMessage"></p>
+
+    <div class="camera-container">
+        <video id="cameraFeed" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <p id="alertMessage">📡 AI Tracking Active...</p>
+
+    <script src="script.js"></script>
 </body>
 </html>
