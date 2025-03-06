@@ -1,0 +1,28 @@
+body {
+    text-align: center;
+    font-family: Arial, sans-serif;
+    background-color: #000;
+    color: #fff;
+}
+
+video {
+    display: block;
+    margin: 0 auto;
+    width: 640px;
+    height: 480px;
+    border: 2px solid white;
+}
+
+canvas {
+    position: absolute;
+    top: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+#alertMessage {
+    font-size: 20px;
+    font-weight: bold;
+    color: red;
+    margin-top: 10px;
+}
