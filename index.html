@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultra AI Security Camera</title>
+    <title>AI Security Camera</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>🔍 Ultra AI Security Camera</h1>
+    <h1>AI Security Camera with Auto-Aim & Fighting Detection</h1>
     <video id="cameraFeed" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
-    <p id="alertMessage">Scanning...</p>
+    <div id="alertMessage">🔍 Scanning...</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
     <script src="script.js"></script>
 </body>
 </html>
