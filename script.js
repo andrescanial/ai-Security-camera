@@ -7,17 +7,18 @@ const cameraSelect = document.getElementById("cameraSelect");
 let currentStream = null;
 let poseModel, actionModel;
 
-// Start Camera
-async function startCamera(facingMode = "environment") {
+// Start Camera Function
+async function startCamera(facingMode) {
     try {
         if (currentStream) {
             currentStream.getTracks().forEach(track => track.stop());
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const constraints = {
             video: { facingMode: facingMode }
-        });
+        };
 
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         currentStream = stream;
     } catch (err) {
@@ -25,6 +26,12 @@ async function startCamera(facingMode = "environment") {
         console.error("Camera error:", err);
     }
 }
+
+// Camera Switching Function
+cameraSelect.addEventListener("change", function () {
+    const selectedCamera = cameraSelect.value;
+    startCamera(selectedCamera);
+});
 
 // Load AI Models
 async function loadModels() {
@@ -34,7 +41,7 @@ async function loadModels() {
     detectActivity();
 }
 
-// Detect Poses and Actions
+// Detect Activity & Skeleton Tracking
 async function detectActivity() {
     const pose = await poseModel.estimateSinglePose(video, { flipHorizontal: false });
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -110,11 +117,6 @@ function speakAlert(text) {
     window.speechSynthesis.speak(speech);
 }
 
-// Camera Switching
-cameraSelect.addEventListener("change", function () {
-    startCamera(this.value);
-});
-
 // Start Everything
-startCamera();
+startCamera("environment"); // Default: Back Camera
 loadModels();
