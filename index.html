@@ -3,29 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Security Camera</title>
-    <style>
-        body { text-align: center; font-family: Arial, sans-serif; }
-        video { width: 100%; max-width: 600px; }
-        canvas { position: absolute; top: 0; left: 0; }
-        #alertMessage { font-size: 20px; font-weight: bold; color: red; margin-top: 10px; }
-        select { margin-top: 10px; padding: 5px; }
-    </style>
+    <title>AI Camera Detection</title>
+    <script defer src="script.js"></script>
 </head>
 <body>
-    <h1>🔍 AI Security Camera</h1>
+    <h2>AI Camera Detection System</h2>
     
-    <label for="cameraSelect">📷 Piliin ang Camera:</label>
+    <label for="cameraSelect">Piliin ang Camera:</label>
     <select id="cameraSelect">
-        <option value="environment">📸 Back Camera</option>
-        <option value="user">🤳 Front Camera</option>
+        <option value="user">Front Camera</option>
+        <option value="environment">Back Camera</option>
     </select>
-
+    
     <video id="cameraFeed" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
-
-    <div id="alertMessage">🔵 Waiting for detection...</div>
-
-    <script src="script.js"></script>
+    
+    <p id="alertMessage"></p>
 </body>
 </html>
