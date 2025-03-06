@@ -3,26 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Motion Tracking</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>AI Crime Detection & Tracking</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tf.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+    <script defer src="script.js"></script>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; }
+        video { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); border: 2px solid black; }
+        canvas { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); }
+        select { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
+        .alert { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font-size: 24px; color: red; display: none; }
+    </style>
 </head>
 <body>
-
-    <h1>AI Motion Tracking System</h1>
-    
-    <label for="cameraSelect">Select Camera:</label>
+    <h1>AI Crime Detection & Auto-Tracking</h1>
     <select id="cameraSelect">
-        <option value="environment">Back Camera</option>
         <option value="user">Front Camera</option>
+        <option value="environment">Back Camera</option>
     </select>
-
-    <div class="camera-container">
-        <video id="cameraFeed" autoplay playsinline></video>
-        <canvas id="canvas"></canvas>
-    </div>
-
-    <p id="alertMessage">📡 AI Tracking Active...</p>
-
-    <script src="script.js"></script>
+    <div class="alert" id="alertBox">⚠️ WARNING: Crime Detected!</div>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
 </body>
 </html>
