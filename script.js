@@ -17,14 +17,14 @@ async function startCamera() {
     }
 }
 
-// Load AI Models (PoseNet & Weapon Detector)
+// Load AI Models (PoseNet & COCO-SSD for weapons)
 async function loadModels() {
     const poseModel = await posenet.load();
     weaponModel = await cocoSsd.load(); // COCO-SSD for weapon detection
     return poseModel;
 }
 
-// Detect Multiple People, Fighting, and Weapons
+// Detect Movements & Suspicious Activity
 async function detectActivity(poseModel) {
     const poses = await poseModel.estimateMultiplePoses(video, {
         flipHorizontal: false,
@@ -53,7 +53,7 @@ async function detectActivity(poseModel) {
     } else if (detectedFighting) {
         triggerWarning("⚠️ Fighting Detected!");
     } else {
-        alertMessage.innerText = "✅ All clear.";
+        alertMessage.innerText = "✅ Normal Activity";
     }
 
     requestAnimationFrame(() => detectActivity(poseModel));
@@ -77,7 +77,7 @@ function autoAimFullBody(keypoints) {
     drawCrosshair(keypoints.find(p => p.part === "rightWrist"));
 }
 
-// Gumagalaw na Bounding Box (Camera Marking)
+// Gumagalaw na Bounding Box (Sumusunod sa Galaw ng Tao)
 function drawBoundingBox(keypoints) {
     let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
 
@@ -100,7 +100,7 @@ function drawBoundingBox(keypoints) {
     ctx.fillText("Person", minX, minY - 15);
 }
 
-// Fighting Detection (Mas Advanced)
+// Fighting Detection (Mas Matalino)
 function detectFighting(currentKeypoints) {
     if (previousKeypoints.length === 0) {
         previousKeypoints = currentKeypoints;
@@ -127,7 +127,7 @@ function detectFighting(currentKeypoints) {
     return false;
 }
 
-// Weapon Detection
+// Weapon Detection (Baril at Kutsilyo)
 async function detectWeapon() {
     const predictions = await weaponModel.detect(video);
 
