@@ -49,6 +49,7 @@ async function detectActivity() {
     if (pose) {
         drawBoundingBox(pose.keypoints);
         drawSkeleton(pose.keypoints);
+        drawLabel(pose.keypoints);
     }
 
     const actionPrediction = await detectCrimeActivity();
@@ -106,6 +107,22 @@ function drawSkeleton(keypoints) {
         ctx.fillStyle = "blue";
         ctx.fill();
     });
+}
+
+// Draw Label on Top of Person
+function drawLabel(keypoints) {
+    let minX = Infinity, minY = Infinity;
+
+    keypoints.forEach(kp => {
+        if (kp.score > 0.5) {
+            minX = Math.min(minX, kp.position.x);
+            minY = Math.min(minY, kp.position.y);
+        }
+    });
+
+    ctx.fillStyle = "yellow";
+    ctx.font = "16px Arial";
+    ctx.fillText("Person Detected", minX, minY - 10);
 }
 
 // Detect Crime Activity
