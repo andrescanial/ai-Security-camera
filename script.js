@@ -14,39 +14,71 @@ async function startCamera() {
     }
 }
 
-// Load AI Models (YOLO + PoseNet)
-async function loadAIModels() {
-    const objectModel = await cocoSsd.load();
-    const poseModel = await posenet.load();
-    return { objectModel, poseModel };
+// Load AI Model (PoseNet)
+async function loadAIModel() {
+    return await posenet.load();
 }
 
-// Detect Objects & Movement
-async function detectActivity(models) {
-    const objectPredictions = await models.objectModel.detect(video);
-    const pose = await models.poseModel.estimateSinglePose(video, {
+// Detect Multiple People & Auto-Aim
+async function detectActivity(model) {
+    const poses = await model.estimateMultiplePoses(video, {
         flipHorizontal: false,
-        decodingMethod: 'single-person'
+        maxDetections: 5, // Detect up to 5 people
+        scoreThreshold: 0.5
     });
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawSkeleton(pose.keypoints);
-    
-    let detectedWeapons = objectPredictions.filter(obj => obj.class === "knife" || obj.class === "gun");
-    let detectedPeople = objectPredictions.filter(obj => obj.class === "person");
 
-    if (detectedWeapons.length > 0) {
-        triggerAlert("🚨 Weapon Detected!");
-        sendAlertToAdmin("Weapon Detected!");
-        autoEmergencyCall();
-    } else if (detectFighting(pose.keypoints)) {
-        triggerAlert("⚠️ Fight Detected!");
-        sendAlertToAdmin("Fight Detected!");
+    let detectedFighting = false;
+
+    poses.forEach(pose => {
+        drawSkeleton(pose.keypoints);
+        autoAimFullBody(pose.keypoints);
+
+        if (detectFighting(pose.keypoints)) {
+            detectedFighting = true;
+        }
+    });
+
+    if (detectedFighting) {
+        triggerWarning("⚠️ Warning: Fighting Detected!");
     } else {
-        alertMessage.innerText = "✅ No suspicious activity.";
+        alertMessage.innerText = "✅ All clear.";
     }
 
-    requestAnimationFrame(() => detectActivity(models)); // Loop detection
+    requestAnimationFrame(() => detectActivity(model)); // Loop detection
+}
+
+// Auto-Aim Function (Buong Katawan, Multi-Person)
+function autoAimFullBody(keypoints) {
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 3;
+
+    keypoints.forEach(point => {
+        if (point.score > 0.5) {
+            ctx.beginPath();
+            ctx.arc(point.position.x, point.position.y, 10, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+    });
+
+    drawCrosshair(keypoints.find(p => p.part === "nose")); // Head
+    drawCrosshair(keypoints.find(p => p.part === "leftWrist")); // Left Hand
+    drawCrosshair(keypoints.find(p => p.part === "rightWrist")); // Right Hand
+    drawCrosshair(keypoints.find(p => p.part === "leftKnee")); // Left Knee
+    drawCrosshair(keypoints.find(p => p.part === "rightKnee")); // Right Knee
+}
+
+// Draw Crosshair
+function drawCrosshair(point) {
+    if (point && point.score > 0.5) {
+        ctx.beginPath();
+        ctx.moveTo(point.position.x - 10, point.position.y);
+        ctx.lineTo(point.position.x + 10, point.position.y);
+        ctx.moveTo(point.position.x, point.position.y - 10);
+        ctx.lineTo(point.position.x, point.position.y + 10);
+        ctx.stroke();
+    }
 }
 
 // Detect Fighting Motion
@@ -69,43 +101,21 @@ function drawSkeleton(keypoints) {
     });
 }
 
-// Trigger Alert System
-function triggerAlert(message) {
+// Trigger Warning
+function triggerWarning(message) {
     alertMessage.innerText = message;
     speakAlert(message);
 }
 
-// AI Voice Alert
+// AI Voice Warning
 function speakAlert(text) {
     const speech = new SpeechSynthesisUtterance(text);
     window.speechSynthesis.speak(speech);
 }
 
-// Send Alert to Admin via Firebase
-function sendAlertToAdmin(event) {
-    fetch("https://your-firebase-database.com/add", {
-        method: "POST",
-        body: JSON.stringify({ event }),
-        headers: { "Content-Type": "application/json" }
-    }).then(response => response.json())
-      .then(data => console.log("Alert Sent:", data))
-      .catch(error => console.error("Error:", error));
-}
-
-// Auto Emergency Call (Gamit ang Twilio API)
-function autoEmergencyCall() {
-    fetch("https://your-twilio-api.com/call", {
-        method: "POST",
-        body: JSON.stringify({ message: "Emergency! Weapon Detected!" }),
-        headers: { "Content-Type": "application/json" }
-    }).then(response => response.json())
-      .then(data => console.log("Emergency Call Triggered:", data))
-      .catch(error => console.error("Call Error:", error));
-}
-
 // Start AI Camera & Detection
 startCamera().then(() => {
-    loadAIModels().then(models => {
-        detectActivity(models);
+    loadAIModel().then(model => {
+        detectActivity(model);
     });
 });
