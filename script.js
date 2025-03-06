@@ -1,102 +1,87 @@
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const warningText = document.getElementById("warningText");
-const warningAudio = document.getElementById("warningAudio");
-const cameraSelect = document.getElementById("cameraSelect");
+const switchCameraBtn = document.getElementById("switchCamera");
+const alertSound = document.getElementById("alertSound");
+
+let currentStream;
+let usingFrontCamera = true;
 
 async function setupCamera() {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter(device => device.kind === 'videoinput');
-    
-    cameraSelect.innerHTML = "";
-    videoDevices.forEach((device, index) => {
-        const option = document.createElement("option");
-        option.value = device.deviceId;
-        option.textContent = `Camera ${index + 1}`;
-        cameraSelect.appendChild(option);
-    });
-
-    if (videoDevices.length > 0) {
-        startCamera(videoDevices[0].deviceId);
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
     }
 
-    cameraSelect.addEventListener("change", () => {
-        startCamera(cameraSelect.value);
-    });
+    const constraints = {
+        video: {
+            facingMode: usingFrontCamera ? "user" : "environment",
+            width: 640,
+            height: 480
+        }
+    };
+
+    currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = currentStream;
+
+    video.onloadedmetadata = () => {
+        video.play();
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+    };
 }
 
-async function startCamera(deviceId) {
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { deviceId: deviceId } 
-    });
-    video.srcObject = stream;
+switchCameraBtn.addEventListener("click", () => {
+    usingFrontCamera = !usingFrontCamera;
+    setupCamera();
+});
+
+async function loadModels() {
+    const poseNetModel = await posenet.load();
+    return poseNetModel;
 }
 
-async function loadPoseNet() {
-    const net = await posenet.load();
+async function detectMovement(poseNetModel) {
     setInterval(async () => {
-        const pose = await net.estimateSinglePose(video, {
-            flipHorizontal: false,
-            decodingMethod: "single-person"
-        });
+        const pose = await poseNetModel.estimateSinglePose(video, { flipHorizontal: usingFrontCamera });
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        drawPose(pose);
-        detectDanger(pose);
+        drawSkeleton(pose);
+        detectCrime(pose);
     }, 100);
 }
 
-function drawPose(pose) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    pose.keypoints.forEach(point => {
-        ctx.beginPath();
-        ctx.arc(point.position.x, point.position.y, 5, 0, 2 * Math.PI);
-        ctx.fillStyle = "red";
-        ctx.fill();
-    });
-
-    const skeleton = [
-        [pose.keypoints[5], pose.keypoints[7]],
-        [pose.keypoints[7], pose.keypoints[9]],
-        [pose.keypoints[6], pose.keypoints[8]],
-        [pose.keypoints[8], pose.keypoints[10]],
-        [pose.keypoints[5], pose.keypoints[6]],
-        [pose.keypoints[5], pose.keypoints[11]],
-        [pose.keypoints[6], pose.keypoints[12]],
-        [pose.keypoints[11], pose.keypoints[12]],
-        [pose.keypoints[11], pose.keypoints[13]],
-        [pose.keypoints[13], pose.keypoints[15]],
-        [pose.keypoints[12], pose.keypoints[14]],
-        [pose.keypoints[14], pose.keypoints[16]],
-    ];
-
-    skeleton.forEach(bone => {
-        ctx.beginPath();
-        ctx.moveTo(bone[0].position.x, bone[0].position.y);
-        ctx.lineTo(bone[1].position.x, bone[1].position.y);
-        ctx.strokeStyle = "blue";
-        ctx.lineWidth = 2;
-        ctx.stroke();
+function drawSkeleton(pose) {
+    pose.keypoints.forEach((point) => {
+        if (point.score > 0.5) {
+            ctx.beginPath();
+            ctx.arc(point.position.x, point.position.y, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = "red";
+            ctx.fill();
+        }
     });
 }
 
-function detectDanger(pose) {
-    const leftHand = pose.keypoints[9].position;
-    const rightHand = pose.keypoints[10].position;
-    const nose = pose.keypoints[0].position;
+function detectCrime(pose) {
+    const leftHand = pose.keypoints.find(k => k.part === "leftWrist");
+    const rightHand = pose.keypoints.find(k => k.part === "rightWrist");
+    const nose = pose.keypoints.find(k => k.part === "nose");
 
-    const leftHandUp = leftHand.y < nose.y;
-    const rightHandUp = rightHand.y < nose.y;
-
-    if (leftHandUp && rightHandUp) {
-        warningText.textContent = "⚠️ WARNING: Possible Fighting Detected!";
-        warningAudio.play();
-    } else {
-        warningText.textContent = "";
+    if (leftHand.score > 0.5 && rightHand.score > 0.5 && nose.score > 0.5) {
+        const handDistance = Math.abs(leftHand.position.x - rightHand.position.x);
+        if (handDistance < 50) {
+            ctx.fillStyle = "red";
+            ctx.font = "30px Arial";
+            ctx.fillText("⚠️ Possible Fight Detected!", 50, 50);
+            alertSound.play();
+        }
     }
 }
 
-setupCamera();
-video.addEventListener("loadeddata", loadPoseNet);
+async function start() {
+    await setupCamera();
+    const poseNetModel = await loadModels();
+    detectMovement(poseNetModel);
+}
+
+start();
