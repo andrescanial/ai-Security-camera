@@ -4,18 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Security Camera</title>
-    <link rel="stylesheet" href="style.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+    <script defer src="https://docs.opencv.org/master/opencv.js"></script>
+    <script defer src="script.js"></script>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; }
+        video, canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        #switchCamera { position: fixed; top: 20px; left: 20px; padding: 10px; font-size: 16px; }
+    </style>
 </head>
 <body>
-    <h1>AI Security Camera</h1>
-    <select id="cameraSelect"></select>  
-    <video id="video" autoplay></video>
+    <button id="switchCamera">Switch Camera</button>
+    <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
-    <p id="warningText"></p>
-    <audio id="warningAudio" src="alert.mp3"></audio>  
-
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
-    <script src="script.js"></script>
+    <audio id="alertSound" src="alert.mp3"></audio>
 </body>
 </html>
