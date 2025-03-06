@@ -2,15 +2,27 @@ const video = document.getElementById("cameraFeed");
 const alertMessage = document.getElementById("alertMessage");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const cameraSelect = document.getElementById("cameraSelect");
 
 let previousKeypoints = [];
 let weaponModel;
+let currentStream = null;
 
-// Start Camera
-async function startCamera() {
+// Start Camera with Selected Device
+async function startCamera(facingMode = "environment") {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facingMode, audio: true }  // ✅ May audio input na!
+        });
+
         video.srcObject = stream;
+        currentStream = stream;
+
+        startSoundDetection(stream); // ✅ Start sound detection
     } catch (err) {
         alertMessage.innerText = "❌ Camera access denied!";
         console.error("Camera error:", err);
@@ -20,15 +32,15 @@ async function startCamera() {
 // Load AI Models (PoseNet & COCO-SSD for weapons)
 async function loadModels() {
     const poseModel = await posenet.load();
-    weaponModel = await cocoSsd.load(); // COCO-SSD for weapon detection
+    weaponModel = await cocoSsd.load();
     return poseModel;
 }
 
-// Detect Movements & Suspicious Activity
+// Detect Activity
 async function detectActivity(poseModel) {
     const poses = await poseModel.estimateMultiplePoses(video, {
         flipHorizontal: false,
-        maxDetections: 5, 
+        maxDetections: 5,
         scoreThreshold: 0.5
     });
 
@@ -49,9 +61,9 @@ async function detectActivity(poseModel) {
     detectedWeapon = await detectWeapon();
 
     if (detectedWeapon) {
-        triggerWarning("🔫 Weapon Detected!");
+        triggerWarning("Warning! A weapon has been detected!");
     } else if (detectedFighting) {
-        triggerWarning("⚠️ Fighting Detected!");
+        triggerWarning("Alert! Fighting detected!");
     } else {
         alertMessage.innerText = "✅ Normal Activity";
     }
@@ -119,7 +131,7 @@ function detectFighting(currentKeypoints) {
 
         if ((leftSpeed > 15 || rightSpeed > 15) && handDistance < 100) {
             previousKeypoints = currentKeypoints;
-            return true; // Fighting detected
+            return true;
         }
     }
 
@@ -152,21 +164,49 @@ function drawWeaponBox(pred) {
     ctx.fillText("Weapon", pred.bbox[0] + 5, pred.bbox[1] - 5);
 }
 
-// Warning System
+// AI Voice Notification
+function speakAlert(text) {
+    const speech = new SpeechSynthesisUtterance(text);
+    speech.lang = "en-US";  // English voice alert
+    speech.rate = 1.0; // Normal speed
+    window.speechSynthesis.speak(speech);
+}
+
+// Warning System (May AI Voice Alert)
 function triggerWarning(message) {
     alertMessage.innerText = message;
     speakAlert(message);
 }
 
-// AI Voice Notification
-function speakAlert(text) {
-    const speech = new SpeechSynthesisUtterance(text);
-    window.speechSynthesis.speak(speech);
+// Sound Detection (Para sa Sigaw o Putok ng Baril)
+function startSoundDetection(stream) {
+    const audioContext = new AudioContext();
+    const analyser = audioContext.createAnalyser();
+    const microphone = audioContext.createMediaStreamSource(stream);
+    microphone.connect(analyser);
+    analyser.fftSize = 512;
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    function analyzeAudio() {
+        analyser.getByteFrequencyData(dataArray);
+        const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+
+        if (volume > 80) { // ✅ Kapag malakas ang tunog (sigaw o putok)
+            triggerWarning("Loud noise detected! Possible gunshot or scream!");
+        }
+
+        requestAnimationFrame(analyzeAudio);
+    }
+
+    analyzeAudio();
 }
 
-// Start Everything
-startCamera().then(() => {
-    loadModels().then(model => {
-        detectActivity(model);
-    });
+// Start Camera on Dropdown Change
+cameraSelect.addEventListener("change", () => {
+    startCamera(cameraSelect.value);
 });
+
+// Start Everything
+startCamera();
+loadModels().then(model => detectActivity(model));
