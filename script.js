@@ -1,107 +1,129 @@
-let video = document.getElementById("video");
-let canvas = document.getElementById("canvas");
-let ctx = canvas.getContext("2d");
-let alertBox = document.getElementById("alertBox");
-let cameraSelect = document.getElementById("cameraSelect");
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const cameraSelect = document.getElementById("cameraSelect");
 
-// Start camera
-async function startCamera(facingMode = "user") {
-    if (navigator.mediaDevices.getUserMedia) {
-        let stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: facingMode }
-        });
-        video.srcObject = stream;
+let detector;
+let cameraStream;
+
+// 🔹 Function to Load Pose Detection Model
+async function loadModel() {
+    detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet);
+}
+
+// 🔹 Function to Start Camera
+async function startCamera(deviceId = null) {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
     }
+
+    const constraints = {
+        video: { deviceId: deviceId ? { exact: deviceId } : undefined }
+    };
+
+    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = cameraStream;
+
+    // 🔹 Populate Camera Options
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    cameraSelect.innerHTML = "";
+    devices.forEach(device => {
+        if (device.kind === "videoinput") {
+            let option = document.createElement("option");
+            option.value = device.deviceId;
+            option.text = device.label || `Camera ${cameraSelect.length + 1}`;
+            cameraSelect.appendChild(option);
+        }
+    });
+
+    // 🔹 Auto-switch Camera
+    cameraSelect.onchange = () => startCamera(cameraSelect.value);
 }
 
-// Load PoseNet model
-async function loadPoseNet() {
-    const net = await posenet.load();
-    detectPose(net);
-}
+// 🔹 Function to Detect Human Pose
+async function detectPose() {
+    if (!detector) return;
 
-// Detect human pose
-async function detectPose(net) {
+    const poses = await detector.estimatePoses(video);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    setInterval(async () => {
-        const pose = await net.estimateSinglePose(video, {
-            flipHorizontal: false,
-            decodingMethod: "single-person"
+    poses.forEach(pose => {
+        pose.keypoints.forEach(point => {
+            if (point.score > 0.3) {
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = "red";
+                ctx.fill();
+            }
         });
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawSkeleton(pose);
-        detectViolence(pose);
-    }, 100);
+        drawSkeleton(pose.keypoints);
+    });
+
+    requestAnimationFrame(detectPose);
 }
 
-// Draw skeleton on detected person
-function drawSkeleton(pose) {
-    ctx.strokeStyle = "red";
-    ctx.lineWidth = 3;
+// 🔹 Function to Draw Skeleton
+function drawSkeleton(keypoints) {
+    const pairs = [
+        [0, 1], [1, 2], [2, 3], [3, 4],  // Head to Arm
+        [0, 5], [5, 6], [6, 7], [7, 8],  // Other Arm
+        [5, 9], [9, 10], [10, 11], [11, 12] // Legs
+    ];
 
-    pose.keypoints.forEach((point) => {
-        if (point.score > 0.5) {
+    pairs.forEach(([a, b]) => {
+        if (keypoints[a].score > 0.3 && keypoints[b].score > 0.3) {
             ctx.beginPath();
-            ctx.arc(point.position.x, point.position.y, 5, 0, 2 * Math.PI);
-            ctx.fill();
+            ctx.moveTo(keypoints[a].x, keypoints[a].y);
+            ctx.lineTo(keypoints[b].x, keypoints[b].y);
+            ctx.strokeStyle = "blue";
+            ctx.lineWidth = 3;
+            ctx.stroke();
         }
     });
-
-    let adjacentKeypoints = posenet.getAdjacentKeyPoints(pose.keypoints, 0.5);
-    adjacentKeypoints.forEach((pair) => {
-        ctx.beginPath();
-        ctx.moveTo(pair[0].position.x, pair[0].position.y);
-        ctx.lineTo(pair[1].position.x, pair[1].position.y);
-        ctx.stroke();
-    });
 }
 
-// Detect violent behavior (simplified logic)
-function detectViolence(pose) {
-    let leftHand = pose.keypoints.find((p) => p.part === "leftWrist");
-    let rightHand = pose.keypoints.find((p) => p.part === "rightWrist");
-    let nose = pose.keypoints.find((p) => p.part === "nose");
-
-    if (leftHand && rightHand && nose) {
-        let handDistance = Math.abs(leftHand.position.y - nose.position.y) + Math.abs(rightHand.position.y - nose.position.y);
-        
-        if (handDistance < 100) {
-            showAlert("⚠️ WARNING: Fighting Detected!");
-        } else {
-            hideAlert();
-        }
-    }
-}
-
-// Show alert
-function showAlert(msg) {
-    alertBox.innerText = msg;
-    alertBox.style.display = "block";
-    speakAlert(msg);
-}
-
-// Hide alert
-function hideAlert() {
-    alertBox.style.display = "none";
-}
-
-// AI Voice Alert
-function speakAlert(msg) {
-    let speech = new SpeechSynthesisUtterance(msg);
-    speech.rate = 1;
-    speech.pitch = 1;
+// 🔹 Function for AI Voice Alert
+function aiVoiceAlert(message) {
+    const speech = new SpeechSynthesisUtterance(message);
+    speech.lang = "en-US";
     window.speechSynthesis.speak(speech);
 }
 
-// Camera switching
-cameraSelect.addEventListener("change", (e) => {
-    let facingMode = e.target.value;
-    startCamera(facingMode);
-});
+// 🔹 Function to Detect Fight/Crime
+async function monitorActivity() {
+    if (!detector) return;
 
-// Start
-startCamera();
-loadPoseNet();
+    const poses = await detector.estimatePoses(video);
+    let fightDetected = false;
+
+    poses.forEach(pose => {
+        const leftHand = pose.keypoints[9];
+        const rightHand = pose.keypoints[10];
+
+        if (leftHand.score > 0.3 && rightHand.score > 0.3) {
+            if (Math.abs(leftHand.x - rightHand.x) < 50 && Math.abs(leftHand.y - rightHand.y) < 50) {
+                fightDetected = true;
+            }
+        }
+    });
+
+    if (fightDetected) {
+        aiVoiceAlert("Warning! Fight detected!");
+        alert("⚠️ Warning: Fight detected!");
+    }
+
+    setTimeout(monitorActivity, 2000);
+}
+
+// 🔹 Initialize
+async function init() {
+    await loadModel();
+    await startCamera();
+    detectPose();
+    monitorActivity();
+}
+
+init();
