@@ -41,12 +41,15 @@ async function loadModels() {
     detectActivity();
 }
 
-// Detect Activity & Skeleton Tracking
+// Detect Activity & Draw Tracking
 async function detectActivity() {
     const pose = await poseModel.estimateSinglePose(video, { flipHorizontal: false });
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    drawSkeleton(pose.keypoints);
+
+    if (pose) {
+        drawBoundingBox(pose.keypoints);
+        drawSkeleton(pose.keypoints);
+    }
 
     const actionPrediction = await detectCrimeActivity();
     if (actionPrediction) {
@@ -54,6 +57,24 @@ async function detectActivity() {
     }
 
     requestAnimationFrame(detectActivity);
+}
+
+// Draw Bounding Box
+function drawBoundingBox(keypoints) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    keypoints.forEach(kp => {
+        if (kp.score > 0.5) {
+            minX = Math.min(minX, kp.position.x);
+            minY = Math.min(minY, kp.position.y);
+            maxX = Math.max(maxX, kp.position.x);
+            maxY = Math.max(maxY, kp.position.y);
+        }
+    });
+
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
 }
 
 // Draw Skeleton Tracking
