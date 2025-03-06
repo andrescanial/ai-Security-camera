@@ -3,6 +3,9 @@ const alertMessage = document.getElementById("alertMessage");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
+let previousKeypoints = [];
+let weaponModel;
+
 // Start Camera
 async function startCamera() {
     try {
@@ -14,42 +17,49 @@ async function startCamera() {
     }
 }
 
-// Load AI Model (PoseNet)
-async function loadAIModel() {
-    return await posenet.load();
+// Load AI Models (PoseNet & Weapon Detector)
+async function loadModels() {
+    const poseModel = await posenet.load();
+    weaponModel = await cocoSsd.load(); // COCO-SSD for weapon detection
+    return poseModel;
 }
 
-// Detect Multiple People & Auto-Aim
-async function detectActivity(model) {
-    const poses = await model.estimateMultiplePoses(video, {
+// Detect Multiple People, Fighting, and Weapons
+async function detectActivity(poseModel) {
+    const poses = await poseModel.estimateMultiplePoses(video, {
         flipHorizontal: false,
-        maxDetections: 5, // Detect up to 5 people
+        maxDetections: 5, 
         scoreThreshold: 0.5
     });
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     let detectedFighting = false;
+    let detectedWeapon = false;
 
-    poses.forEach(pose => {
-        drawSkeleton(pose.keypoints);
+    for (let pose of poses) {
+        drawBoundingBox(pose.keypoints);
         autoAimFullBody(pose.keypoints);
 
         if (detectFighting(pose.keypoints)) {
             detectedFighting = true;
         }
-    });
+    }
 
-    if (detectedFighting) {
-        triggerWarning("⚠️ Warning: Fighting Detected!");
+    detectedWeapon = await detectWeapon();
+
+    if (detectedWeapon) {
+        triggerWarning("🔫 Weapon Detected!");
+    } else if (detectedFighting) {
+        triggerWarning("⚠️ Fighting Detected!");
     } else {
         alertMessage.innerText = "✅ All clear.";
     }
 
-    requestAnimationFrame(() => detectActivity(model)); // Loop detection
+    requestAnimationFrame(() => detectActivity(poseModel));
 }
 
-// Auto-Aim Function (Buong Katawan, Multi-Person)
+// Auto-Aim sa Buong Katawan
 function autoAimFullBody(keypoints) {
     ctx.strokeStyle = "red";
     ctx.lineWidth = 3;
@@ -62,60 +72,101 @@ function autoAimFullBody(keypoints) {
         }
     });
 
-    drawCrosshair(keypoints.find(p => p.part === "nose")); // Head
-    drawCrosshair(keypoints.find(p => p.part === "leftWrist")); // Left Hand
-    drawCrosshair(keypoints.find(p => p.part === "rightWrist")); // Right Hand
-    drawCrosshair(keypoints.find(p => p.part === "leftKnee")); // Left Knee
-    drawCrosshair(keypoints.find(p => p.part === "rightKnee")); // Right Knee
+    drawCrosshair(keypoints.find(p => p.part === "nose"));
+    drawCrosshair(keypoints.find(p => p.part === "leftWrist"));
+    drawCrosshair(keypoints.find(p => p.part === "rightWrist"));
 }
 
-// Draw Crosshair
-function drawCrosshair(point) {
-    if (point && point.score > 0.5) {
-        ctx.beginPath();
-        ctx.moveTo(point.position.x - 10, point.position.y);
-        ctx.lineTo(point.position.x + 10, point.position.y);
-        ctx.moveTo(point.position.x, point.position.y - 10);
-        ctx.lineTo(point.position.x, point.position.y + 10);
-        ctx.stroke();
-    }
-}
+// Gumagalaw na Bounding Box (Camera Marking)
+function drawBoundingBox(keypoints) {
+    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
 
-// Detect Fighting Motion
-function detectFighting(keypoints) {
-    const leftHand = keypoints.find(p => p.part === "leftWrist");
-    const rightHand = keypoints.find(p => p.part === "rightWrist");
-
-    return leftHand && rightHand && Math.abs(leftHand.position.y - rightHand.position.y) < 50;
-}
-
-// Draw Skeleton on Canvas
-function drawSkeleton(keypoints) {
-    ctx.fillStyle = "red";
     keypoints.forEach(point => {
         if (point.score > 0.5) {
-            ctx.beginPath();
-            ctx.arc(point.position.x, point.position.y, 5, 0, 2 * Math.PI);
-            ctx.fill();
+            minX = Math.min(minX, point.position.x);
+            minY = Math.min(minY, point.position.y);
+            maxX = Math.max(maxX, point.position.x);
+            maxY = Math.max(maxY, point.position.y);
         }
     });
+
+    ctx.strokeStyle = "yellow";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(minX - 10, minY - 10, (maxX - minX) + 20, (maxY - minY) + 20);
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(minX - 10, minY - 30, 100, 20);
+    ctx.fillStyle = "white";
+    ctx.fillText("Person", minX, minY - 15);
 }
 
-// Trigger Warning
+// Fighting Detection (Mas Advanced)
+function detectFighting(currentKeypoints) {
+    if (previousKeypoints.length === 0) {
+        previousKeypoints = currentKeypoints;
+        return false;
+    }
+
+    const leftHand = currentKeypoints.find(p => p.part === "leftWrist");
+    const rightHand = currentKeypoints.find(p => p.part === "rightWrist");
+    const leftHandPrev = previousKeypoints.find(p => p.part === "leftWrist");
+    const rightHandPrev = previousKeypoints.find(p => p.part === "rightWrist");
+
+    if (leftHand && rightHand && leftHandPrev && rightHandPrev) {
+        const leftSpeed = Math.abs(leftHand.position.y - leftHandPrev.position.y);
+        const rightSpeed = Math.abs(rightHand.position.y - rightHandPrev.position.y);
+        const handDistance = Math.abs(leftHand.position.x - rightHand.position.x);
+
+        if ((leftSpeed > 15 || rightSpeed > 15) && handDistance < 100) {
+            previousKeypoints = currentKeypoints;
+            return true; // Fighting detected
+        }
+    }
+
+    previousKeypoints = currentKeypoints;
+    return false;
+}
+
+// Weapon Detection
+async function detectWeapon() {
+    const predictions = await weaponModel.detect(video);
+
+    for (let pred of predictions) {
+        if (pred.class === "knife" || pred.class === "gun") {
+            drawWeaponBox(pred);
+            return true;
+        }
+    }
+    return false;
+}
+
+// Gumagalaw na Box Kapag May Weapon
+function drawWeaponBox(pred) {
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(pred.bbox[0], pred.bbox[1], pred.bbox[2], pred.bbox[3]);
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(pred.bbox[0], pred.bbox[1] - 20, 100, 20);
+    ctx.fillStyle = "red";
+    ctx.fillText("Weapon", pred.bbox[0] + 5, pred.bbox[1] - 5);
+}
+
+// Warning System
 function triggerWarning(message) {
     alertMessage.innerText = message;
     speakAlert(message);
 }
 
-// AI Voice Warning
+// AI Voice Notification
 function speakAlert(text) {
     const speech = new SpeechSynthesisUtterance(text);
     window.speechSynthesis.speak(speech);
 }
 
-// Start AI Camera & Detection
+// Start Everything
 startCamera().then(() => {
-    loadAIModel().then(model => {
+    loadModels().then(model => {
         detectActivity(model);
     });
 });
