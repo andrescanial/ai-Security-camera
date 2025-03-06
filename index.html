@@ -3,23 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-Time Human Tracking</title>
-    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
-    <script defer src="script.js"></script>
-    <style>
-        body { text-align: center; font-family: Arial, sans-serif; }
-        canvas { position: absolute; top: 0; left: 0; }
-        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #controls { position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.5); padding: 10px; color: white; }
-    </style>
+    <title>AI Security Camera</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="controls">
-        <label for="cameraSelect">Camera: </label>
-        <select id="cameraSelect"></select>
-    </div>
-    <video id="video" autoplay playsinline></video>
+    <h1>AI Security Camera</h1>
+    <select id="cameraSelect"></select>  
+    <video id="video" autoplay></video>
     <canvas id="canvas"></canvas>
+    <p id="warningText"></p>
+    <audio id="warningAudio" src="alert.mp3"></audio>  
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+    <script src="script.js"></script>
 </body>
 </html>
