@@ -1,160 +1,107 @@
-const video = document.getElementById("cameraFeed");
-const alertMessage = document.getElementById("alertMessage");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const cameraSelect = document.getElementById("cameraSelect");
+let video = document.getElementById("video");
+let canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
+let alertBox = document.getElementById("alertBox");
+let cameraSelect = document.getElementById("cameraSelect");
 
-let currentStream = null;
-let poseModel, actionModel;
-
-// Start Camera Function
-async function startCamera(facingMode) {
-    try {
-        if (currentStream) {
-            currentStream.getTracks().forEach(track => track.stop());
-        }
-
-        const constraints = {
+// Start camera
+async function startCamera(facingMode = "user") {
+    if (navigator.mediaDevices.getUserMedia) {
+        let stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: facingMode }
-        };
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        });
         video.srcObject = stream;
-        currentStream = stream;
-    } catch (err) {
-        alertMessage.innerText = "❌ Camera access denied!";
-        console.error("Camera error:", err);
     }
 }
 
-// Camera Switching Function
-cameraSelect.addEventListener("change", function () {
-    const selectedCamera = cameraSelect.value;
-    startCamera(selectedCamera);
-});
-
-// Load AI Models
-async function loadModels() {
-    poseModel = await posenet.load();
-    actionModel = await tf.loadLayersModel("/models/action-detection/model.json");
-
-    detectActivity();
+// Load PoseNet model
+async function loadPoseNet() {
+    const net = await posenet.load();
+    detectPose(net);
 }
 
-// Detect Activity & Draw Tracking
-async function detectActivity() {
-    const pose = await poseModel.estimateSinglePose(video, { flipHorizontal: false });
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+// Detect human pose
+async function detectPose(net) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-    if (pose) {
-        drawBoundingBox(pose.keypoints);
-        drawSkeleton(pose.keypoints);
-        drawLabel(pose.keypoints);
-    }
+    setInterval(async () => {
+        const pose = await net.estimateSinglePose(video, {
+            flipHorizontal: false,
+            decodingMethod: "single-person"
+        });
 
-    const actionPrediction = await detectCrimeActivity();
-    if (actionPrediction) {
-        showAlert(actionPrediction);
-    }
-
-    requestAnimationFrame(detectActivity);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawSkeleton(pose);
+        detectViolence(pose);
+    }, 100);
 }
 
-// Draw Bounding Box
-function drawBoundingBox(keypoints) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-    keypoints.forEach(kp => {
-        if (kp.score > 0.5) {
-            minX = Math.min(minX, kp.position.x);
-            minY = Math.min(minY, kp.position.y);
-            maxX = Math.max(maxX, kp.position.x);
-            maxY = Math.max(maxY, kp.position.y);
-        }
-    });
-
+// Draw skeleton on detected person
+function drawSkeleton(pose) {
     ctx.strokeStyle = "red";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
-}
-
-// Draw Skeleton Tracking
-function drawSkeleton(keypoints) {
-    ctx.strokeStyle = "green";
     ctx.lineWidth = 3;
 
-    const connections = [
-        [5, 7], [7, 9], // Left arm
-        [6, 8], [8, 10], // Right arm
-        [5, 6], [5, 11], [6, 12], // Torso
-        [11, 13], [13, 15], // Left leg
-        [12, 14], [14, 16] // Right leg
-    ];
-
-    connections.forEach(([i, j]) => {
-        const kp1 = keypoints[i].position;
-        const kp2 = keypoints[j].position;
-
-        ctx.beginPath();
-        ctx.moveTo(kp1.x, kp1.y);
-        ctx.lineTo(kp2.x, kp2.y);
-        ctx.stroke();
-    });
-
-    keypoints.forEach(kp => {
-        ctx.beginPath();
-        ctx.arc(kp.position.x, kp.position.y, 5, 0, 2 * Math.PI);
-        ctx.fillStyle = "blue";
-        ctx.fill();
-    });
-}
-
-// Draw Label on Top of Person
-function drawLabel(keypoints) {
-    let minX = Infinity, minY = Infinity;
-
-    keypoints.forEach(kp => {
-        if (kp.score > 0.5) {
-            minX = Math.min(minX, kp.position.x);
-            minY = Math.min(minY, kp.position.y);
+    pose.keypoints.forEach((point) => {
+        if (point.score > 0.5) {
+            ctx.beginPath();
+            ctx.arc(point.position.x, point.position.y, 5, 0, 2 * Math.PI);
+            ctx.fill();
         }
     });
 
-    ctx.fillStyle = "yellow";
-    ctx.font = "16px Arial";
-    ctx.fillText("Person Detected", minX, minY - 10);
+    let adjacentKeypoints = posenet.getAdjacentKeyPoints(pose.keypoints, 0.5);
+    adjacentKeypoints.forEach((pair) => {
+        ctx.beginPath();
+        ctx.moveTo(pair[0].position.x, pair[0].position.y);
+        ctx.lineTo(pair[1].position.x, pair[1].position.y);
+        ctx.stroke();
+    });
 }
 
-// Detect Crime Activity
-async function detectCrimeActivity() {
-    const tensor = tf.browser.fromPixels(video).resizeNearestNeighbor([224, 224]).expandDims(0).toFloat().div(tf.scalar(255));
-    const prediction = await actionModel.predict(tensor).data();
+// Detect violent behavior (simplified logic)
+function detectViolence(pose) {
+    let leftHand = pose.keypoints.find((p) => p.part === "leftWrist");
+    let rightHand = pose.keypoints.find((p) => p.part === "rightWrist");
+    let nose = pose.keypoints.find((p) => p.part === "nose");
 
-    const labels = ["Normal", "Fighting", "Shooting", "Stabbing"];
-    const maxIndex = prediction.indexOf(Math.max(...prediction));
-
-    if (labels[maxIndex] !== "Normal") {
-        return labels[maxIndex];
+    if (leftHand && rightHand && nose) {
+        let handDistance = Math.abs(leftHand.position.y - nose.position.y) + Math.abs(rightHand.position.y - nose.position.y);
+        
+        if (handDistance < 100) {
+            showAlert("⚠️ WARNING: Fighting Detected!");
+        } else {
+            hideAlert();
+        }
     }
-
-    return null;
 }
 
-// Show Alert
-function showAlert(activity) {
-    alertMessage.innerText = `⚠️ WARNING: ${activity} DETECTED!`;
-    alertMessage.style.color = "red";
-    speakAlert(`Warning! ${activity} detected.`);
+// Show alert
+function showAlert(msg) {
+    alertBox.innerText = msg;
+    alertBox.style.display = "block";
+    speakAlert(msg);
 }
 
-// AI Voice Notification
-function speakAlert(text) {
-    const speech = new SpeechSynthesisUtterance(text);
-    speech.lang = "en-US";
-    speech.rate = 1.0;
+// Hide alert
+function hideAlert() {
+    alertBox.style.display = "none";
+}
+
+// AI Voice Alert
+function speakAlert(msg) {
+    let speech = new SpeechSynthesisUtterance(msg);
+    speech.rate = 1;
+    speech.pitch = 1;
     window.speechSynthesis.speak(speech);
 }
 
-// Start Everything
-startCamera("environment"); // Default: Back Camera
-loadModels();
+// Camera switching
+cameraSelect.addEventListener("change", (e) => {
+    let facingMode = e.target.value;
+    startCamera(facingMode);
+});
+
+// Start
+startCamera();
+loadPoseNet();
