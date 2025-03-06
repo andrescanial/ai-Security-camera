@@ -1,129 +1,102 @@
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const warningText = document.getElementById("warningText");
+const warningAudio = document.getElementById("warningAudio");
 const cameraSelect = document.getElementById("cameraSelect");
 
-let detector;
-let cameraStream;
-
-// 🔹 Function to Load Pose Detection Model
-async function loadModel() {
-    detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet);
-}
-
-// 🔹 Function to Start Camera
-async function startCamera(deviceId = null) {
-    if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-    }
-
-    const constraints = {
-        video: { deviceId: deviceId ? { exact: deviceId } : undefined }
-    };
-
-    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject = cameraStream;
-
-    // 🔹 Populate Camera Options
+async function setupCamera() {
     const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(device => device.kind === 'videoinput');
+    
     cameraSelect.innerHTML = "";
-    devices.forEach(device => {
-        if (device.kind === "videoinput") {
-            let option = document.createElement("option");
-            option.value = device.deviceId;
-            option.text = device.label || `Camera ${cameraSelect.length + 1}`;
-            cameraSelect.appendChild(option);
-        }
+    videoDevices.forEach((device, index) => {
+        const option = document.createElement("option");
+        option.value = device.deviceId;
+        option.textContent = `Camera ${index + 1}`;
+        cameraSelect.appendChild(option);
     });
 
-    // 🔹 Auto-switch Camera
-    cameraSelect.onchange = () => startCamera(cameraSelect.value);
+    if (videoDevices.length > 0) {
+        startCamera(videoDevices[0].deviceId);
+    }
+
+    cameraSelect.addEventListener("change", () => {
+        startCamera(cameraSelect.value);
+    });
 }
 
-// 🔹 Function to Detect Human Pose
-async function detectPose() {
-    if (!detector) return;
+async function startCamera(deviceId) {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { deviceId: deviceId } 
+    });
+    video.srcObject = stream;
+}
 
-    const poses = await detector.estimatePoses(video);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    poses.forEach(pose => {
-        pose.keypoints.forEach(point => {
-            if (point.score > 0.3) {
-                ctx.beginPath();
-                ctx.arc(point.x, point.y, 5, 0, 2 * Math.PI);
-                ctx.fillStyle = "red";
-                ctx.fill();
-            }
+async function loadPoseNet() {
+    const net = await posenet.load();
+    setInterval(async () => {
+        const pose = await net.estimateSinglePose(video, {
+            flipHorizontal: false,
+            decodingMethod: "single-person"
         });
 
-        drawSkeleton(pose.keypoints);
-    });
-
-    requestAnimationFrame(detectPose);
+        drawPose(pose);
+        detectDanger(pose);
+    }, 100);
 }
 
-// 🔹 Function to Draw Skeleton
-function drawSkeleton(keypoints) {
-    const pairs = [
-        [0, 1], [1, 2], [2, 3], [3, 4],  // Head to Arm
-        [0, 5], [5, 6], [6, 7], [7, 8],  // Other Arm
-        [5, 9], [9, 10], [10, 11], [11, 12] // Legs
+function drawPose(pose) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    pose.keypoints.forEach(point => {
+        ctx.beginPath();
+        ctx.arc(point.position.x, point.position.y, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = "red";
+        ctx.fill();
+    });
+
+    const skeleton = [
+        [pose.keypoints[5], pose.keypoints[7]],
+        [pose.keypoints[7], pose.keypoints[9]],
+        [pose.keypoints[6], pose.keypoints[8]],
+        [pose.keypoints[8], pose.keypoints[10]],
+        [pose.keypoints[5], pose.keypoints[6]],
+        [pose.keypoints[5], pose.keypoints[11]],
+        [pose.keypoints[6], pose.keypoints[12]],
+        [pose.keypoints[11], pose.keypoints[12]],
+        [pose.keypoints[11], pose.keypoints[13]],
+        [pose.keypoints[13], pose.keypoints[15]],
+        [pose.keypoints[12], pose.keypoints[14]],
+        [pose.keypoints[14], pose.keypoints[16]],
     ];
 
-    pairs.forEach(([a, b]) => {
-        if (keypoints[a].score > 0.3 && keypoints[b].score > 0.3) {
-            ctx.beginPath();
-            ctx.moveTo(keypoints[a].x, keypoints[a].y);
-            ctx.lineTo(keypoints[b].x, keypoints[b].y);
-            ctx.strokeStyle = "blue";
-            ctx.lineWidth = 3;
-            ctx.stroke();
-        }
+    skeleton.forEach(bone => {
+        ctx.beginPath();
+        ctx.moveTo(bone[0].position.x, bone[0].position.y);
+        ctx.lineTo(bone[1].position.x, bone[1].position.y);
+        ctx.strokeStyle = "blue";
+        ctx.lineWidth = 2;
+        ctx.stroke();
     });
 }
 
-// 🔹 Function for AI Voice Alert
-function aiVoiceAlert(message) {
-    const speech = new SpeechSynthesisUtterance(message);
-    speech.lang = "en-US";
-    window.speechSynthesis.speak(speech);
-}
+function detectDanger(pose) {
+    const leftHand = pose.keypoints[9].position;
+    const rightHand = pose.keypoints[10].position;
+    const nose = pose.keypoints[0].position;
 
-// 🔹 Function to Detect Fight/Crime
-async function monitorActivity() {
-    if (!detector) return;
+    const leftHandUp = leftHand.y < nose.y;
+    const rightHandUp = rightHand.y < nose.y;
 
-    const poses = await detector.estimatePoses(video);
-    let fightDetected = false;
-
-    poses.forEach(pose => {
-        const leftHand = pose.keypoints[9];
-        const rightHand = pose.keypoints[10];
-
-        if (leftHand.score > 0.3 && rightHand.score > 0.3) {
-            if (Math.abs(leftHand.x - rightHand.x) < 50 && Math.abs(leftHand.y - rightHand.y) < 50) {
-                fightDetected = true;
-            }
-        }
-    });
-
-    if (fightDetected) {
-        aiVoiceAlert("Warning! Fight detected!");
-        alert("⚠️ Warning: Fight detected!");
+    if (leftHandUp && rightHandUp) {
+        warningText.textContent = "⚠️ WARNING: Possible Fighting Detected!";
+        warningAudio.play();
+    } else {
+        warningText.textContent = "";
     }
-
-    setTimeout(monitorActivity, 2000);
 }
 
-// 🔹 Initialize
-async function init() {
-    await loadModel();
-    await startCamera();
-    detectPose();
-    monitorActivity();
-}
-
-init();
+setupCamera();
+video.addEventListener("loadeddata", loadPoseNet);
